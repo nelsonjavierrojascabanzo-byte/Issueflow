@@ -8,6 +8,8 @@ namespace App\Controller;
 use Symfony\Component\HttpFoundation\Response;
 // Clase de symfony para definir las rutas
 use Symfony\Component\Routing\Attribute\Route;
+// clase symfony para asociar un metodo de controlador con una plantilla twig
+use Symfony\Bridge\Twig\Attribute\Template;
 
 // Clase controlador HomeController
 final class HomeController {
@@ -22,32 +24,12 @@ final class HomeController {
     */
     #[Route('/', name: 'app_home', methods: ['GET'])]
     #[Template('home/index.html.twig')]
-    public function index(): Response {
-        $projectName = 'IssueFlow';
-        $message = 'Symfony ha recibido la petición y ha devuelto un Response';
-
-        // Creamos una variable que contiene el documento html
-        $html = <<<HTML
-            <!DOCTYPE html>
-            <html lang="es">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>{$projectName}</title>
-            </head>
-            <body>
-                <main>
-                    <h1>{$projectName}</h1>
-                    <p>{$message}</p>
-                    <p><a href="/tickets">Ver incidencias</a></p>
-                    <p><a href="/health">Comprobar estado</a></p>
-                </main>
-            </body>
-            </html>
-        HTML;
-
-        // Retornamos la respuesta
-        return new Response($html, Response::HTTP_OK);
+    public function index(): array {
+        // Retornamos un arreglo con los datos que queremos pasar a la vista
+        return [
+            'projectName' => 'IssueFlow',
+            'message' => 'Symfony 8.1 ha resuelto la ruta y twig ha construido la vista',
+        ];
     }
 
     /* Definimos una segunda ruta para este controlador.
