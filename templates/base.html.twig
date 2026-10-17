@@ -1,92 +1,58 @@
+{#
+    Plantilla base de IssueFlow.
+    Las demás vistas pueden heredar esta estructura mediante {% extends %}
+    y sustituir únicamente los bloques que necesiten.
+#}
 <!DOCTYPE html>
 <html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>{% block title %}IssueFlow{% endblock %}</title>
+        {# Las vistas hijas pueden reemplazar el título de la página. #}
+        <title>{% block title %}IssueFlow{% endblock %}</title>
 
-    <style>
-        body {
-            background-color: #ffffff;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
+        {# Bloque reservado para hojas de estilo adicionales #}
+        {% block stylesheets %}{% endblock %}
 
-        nav {
-            background-color: #042445;
-            padding: 25px 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        {# Bloque reservado para scripts adicionales #}
+        {% block javascripts %}
+            {% block importmap %}{{ importmap('app') }}{% endblock %}
+        {% endblock %}
 
-        .logo {
-            color: white;
-            font-weight: bold;
-            font-size: 22px;
-            margin-left: 30px;
-        }
+        {#
+            Symfony 8.1 puede trabajar con FrankenPHP Hot Reload.
+            Este bloque solo se activa si la variable de servidor existe,
+            por lo que no afecta a los alumnos que ejecuten PHP de otra forma.
+        #}
+        {% set frankenphp_hot_reload = app.request.server.get('FRANKENPHP_HOT_RELOAD') %}
+        {% if frankenphp_hot_reload %}
+        <meta name="frankenphp-hot-reload:url" content="{{ frankenphp_hot_reload }}">
+        <script src="https://cdn.jsdelivr.net/npm/idiomorph"></script>
+        <script src="https://cdn.jsdelivr.net/npm/frankenphp-hot-reload/+esm" type="module"></script>
+        {% endif %}
+    </head>
+    <body>
+        <header class="site-header">
+            <div class="container header-inner">
+                {# path() genera la URL a partir del nombre interno de una ruta Symfony #}
+                <a class="brand" href="{{ path('app_home') }}">IssueFlow</a>
+                {#  Barra de navegación principal #}
+                <nav aria-label="Navegación principal">
+                    <a href="{{ path('app_home') }}">Inicio</a>
+                    <a href="{{ path('app_ticket_index') }}">Incidencias</a>
+                    <a href="{{ path('app_health') }}">Estado</a>
+                </nav>
+            </div>
+        </header>
 
-        .menu a {
-            color: white;
-            margin-left: 20px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 17px;
-        }
-
-        .card {
-            background: white;
-            padding: 40px;
-            margin: 40px auto;
-            width: 85%;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.1);
-        }
-
-        .hero {
-            padding: 20px;
-        }
-
-        .eyebrow {
-            font-size: 14px;
-            color: #003366;
-            text-transform: uppercase;
-            margin-bottom: 10px;
-        }
-
-        h1 {
-            font-size: 36px;
-            color: #003366;
-            margin-bottom: 10px;
-        }
-
-        p {
-            font-size: 18px;
-            color: #003366;
-        }
-    </style>
-</head>
-
-<body>
-
-    <nav>
-        <div class="logo">IssueFlow</div>
-
-        <div class="menu">
-            <a href="/">Inicio</a>
-            <a href="/incidencias">Incidencias</a>
-            <a href="/estado">Estado</a>
-        </div>
-    </nav>
-
-    <div class="card">
-        {% block body %}{% endblock %}
-    </div>
-
-</body>
+        <main class="site-main">
+            <div class="container">
+                {# Aquí las vistas hijas colocan su contenido principal #}
+                {% block body %}{% endblock %}
+            </div>
+        </main>
+    </body>
 </html>
 
 
