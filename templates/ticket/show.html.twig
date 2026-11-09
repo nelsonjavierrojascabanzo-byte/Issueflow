@@ -2,9 +2,21 @@
 {% extends 'base.html.twig' %}
 
 {# Usamos el ID del ticket para construir un título de página específico. #}
-{% block title %}{{ ticket.id }} · IssueFlow{% endblock %}
+{% block title %}{{ ticket.code }} · IssueFlow{% endblock %}
 
 {% block body %}
+    {#
+        app.flashes('success') lee los mensajes de ese tipo y los consume.
+        hasPreviousSession evita iniciar una nueva sesión solo por preguntar
+        si existen flashes 
+    #}
+    {% if app.request.hasPreviousSession %}
+        {% for message in app.flashes('success') %}
+            <div class="flash-success">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
     <p>
         {# No escribimos /tickets manualmente: usamos el nombre de la ruta. #}
         <a href="{{ path('app_ticket_index') }}">← Volver a incidencias</a>
@@ -15,8 +27,40 @@
             Twig accede a las claves del array con la notación ticket.id,
             ticket.title y ticket.priority.
         #}
-        <p class="ticket-id">{{ ticket.id }}</p>
+        <p class="ticket-code">{{ ticket.code }}</p>
         <h1>{{ ticket.title }}</h1>
-        <p>Prioridad: <strong>{{ ticket.priority }}</strong></p>
+        <p>Prioridad: <strong>{{ ticket.priority.label }}</strong></p>
+        <p>Estado: <strong>{{ ticket.status.label }}</strong></p>
+        <p>Objetivo de respuesta: <strong>{{ responseTargetHours }}</strong></p>
+        <p>
+            Categoría:
+            {% if ticket.category %}
+                {{ ticket.category.name }}
+            {% else %}
+                Sin categoría
+            {% endif %}
+        </p>
+        <p>
+            Asignado a:
+            {% if ticket.assignee %}
+                {{ ticket.assignee.name }}
+            {% else %}
+                Sin asignar
+            {% endif %}
+        </p>   
+        {# 
+            Quiero mostrar un mensaje solo sí priority es 'urgent'.
+            ticket.urgent resuelve el metodo isUrgent()
+        #}
+        {% if ticket.urgent %}
+            <p><strong>Requiere atención inmediata</strong></p>
+        {% endif %}
+        {# 
+            Quiero mostrar un mensaje solo sí el estado es
+            diferente de 'open'
+        #}
+        {% if not ticket.open %}
+            <p><strong>Esta incidencia ya está siendo gestionada o está cerrada</strong></p>
+        {% endif %}
     </article>
 {% endblock %}

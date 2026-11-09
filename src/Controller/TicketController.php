@@ -4,60 +4,176 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Contract\TicketCatalogInterface;
+use App\Contract\TicketSlaCalculatorInterface;
+use Psr\Log\LoggerInterface;
+use App\Form\TicketType;
+use App\Form\Model\TicketCreateData;
+use App\Form\Model\TicketSearchCriteria;
+use App\Form\TicketFilterType;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 // Mi clase TicketController hereda de AbstractController de Symfony
 final class TicketController extends AbstractController
 {
-    /* En este ejemplo, los tickets se definen de forma estática. 
-        En un caso real, se obtendrían de una base de datos. */
-
-    /* TICKETS es un array donde cada elemento es un ticket en particular
-    Cada ticket es un array asociativo, que contiene los datos o propiedades de este. */
-    // Esto es una constante de clase, que se puede acceder desde cualquier método de la clase TicketController.
-    private const TICKETS = [
-        ['id' => 'INC-1001', 'title' => 'No puedo iniciar sesión', 'priority' => 'urgent'],
-        ['id' => 'INC-1002', 'title' => 'Error en la factura', 'priority' => 'high'],
-        ['id' => 'INC-1003', 'title' => 'Actualizar datos de contacto', 'priority' => 'normal'],
-    ];
+    /* Inyección de dependencias */
+    public function __construct(
+        private readonly TicketCatalogInterface $ticketCatalog,
+        private readonly TicketSlaCalculatorInterface $ticketSlaCalculator,
+        private readonly LoggerInterface $logger,
+        private readonly EntityManagerInterface $entityManager,
+    ) {}
 
     #[Route('/tickets', name: 'app_ticket_index', methods: ['GET'])]
     // El método que devuelve la lista de tickets por convención REST es index().
-    public function index(): Response {
+    public function index(Request $request): Response {
+        $lastTicketCode = null;
+
+        /**
+         * Si existe una sesión recuperamos el valor de last_ticket_code
+         */
+        if ($request->hasPreviousSession()) {
+            $lastTicketCode = $request->getSession()->get('last_ticket_code');
+        }
+
+        // Este objeto representa los criterios que llegan desde el formulario de filtrado
+        $criteria = new TicketSearchCriteria();
+
+        // Creamos el formulario de filtrado
+        $filterForm = $this->createForm(TicketFilterType::class, $criteria, [
+            'action' => $this->generateUrl('app_ticket_index')
+        ]);
+
+        // Procesar el formulario
+        $filterForm->handleRequest($request);
+
+        $page = max(1, $request->query->getInt('page', 1));
+
+        $ticketPage = $this->ticketCatalog->search(
+            criteria: $criteria,
+            page: $page,
+            pageSize: 3
+        );
+
         return $this->render('ticket/index.html.twig', [
             // Las claves del arreglo se convierten en las variables que espera Twig
             'title' => 'Incidencias',
-            'tickets' => self::TICKETS
+            'ticketPage' => $ticketPage,
+            'lastTicketCode' => $lastTicketCode,
+            'filterForm' => $filterForm
+        ]);
+    }
+
+    /**
+     * GET: muestra el formulario vacío.
+     * POST: Recibe el formulario cuando se envíe con sus valores,
+     * estos se procesan y se persisten en la base de datos si son correctos.
+     * Los datos del formulario vienen en el objeto Request
+     * Los errores de validación vuelven al formulario asociados al campo que incumplió la restricción
+     */
+    #[Route('/tickets/new', name: 'app_ticket_new', methods: ['GET', 'POST'])]
+    // IsGranted solo permite acceso a la ruta al rol establecido
+    #[IsGranted(
+        'ROLE_AGENT',
+        message: 'Necesitas permisos de agente para crear incidencias.'
+    )]
+    public function new(Request $request): Response
+    {
+        // Crear un objeto TicketCreateData (DTO) para recibir la información del formulario
+        $data = new TicketCreateData();
+        /**
+         * Inicializamos un objeto form con el método createForm() heredado de AbstractController
+         * 1er parámetro corresponde a la clase que define el formulario
+         * 2do parámetro corresponde a el objeto (DTO) que recibe la información del formulario
+         */
+        $form = $this->createForm(TicketType::class, $data);
+
+        /**
+         * El método handleRequest() hace lo siguiente:
+         * 1- Detecta el envío del formulario (si ha sido enviado o no)
+         * 2- Extrae los datos correspondientes del Request
+         * 3- Transforma los valores al tipo esperado
+         * 4- Asigna los datos al objeto TicketCreateData
+         */
+        $form->handleRequest($request);
+
+        /**
+         * Chequeo si el estado del formulario es enviado y además si el formulario es válido.
+         * isValid() puede ejecutar las reglas de validación definidas en el DTO TicketCreateData
+        */
+        if ($form->isSubmitted() && $form->isValid()) {
+            // Si llegamos aquí, ya la entrada del formulario fue validada
+            // Creo la instancia Ticket a partir del DTO TicketCreateData
+            $ticket = $data->mapToTicket();
+
+            // Usamos el entityManager para persistir el ticket en la base de datos
+            $this->entityManager->persist($ticket);
+            $this->entityManager->flush();
+
+            /**
+             * Un Flash Message vive en la sesión y está pensado para consumirse una sola vez.
+             * Lo podemos usar para confirmar una creación de una incidencia después del redirect
+             */
+            $this->addFlash(
+                'success',
+                sprintf('Incidencia %s creada correctamente', $ticket->getCode())
+            );
+
+            // Luego de guardar el ticket, redirigimos a la página de detalle de ticket
+            return $this->redirectToRoute('app_ticket_show', [
+                'code' => $ticket->getCode()
+            ]);
+        }
+        // Si llegamos aquí el formulario no fue enviado, o fue enviado pero no es válido
+        // Envío como respuesta la plantilla del formulario
+        return $this->render('ticket/new.html.twig', [
+            'form' => $form,
         ]);
     }
 
     // Ruta dinámica para mostrar un ticket específico por su ID.
-    #[Route('/tickets/{id}', name:"app_ticket_show", methods: ['GET'])]
+    #[Route('/tickets/{code}', name:"app_ticket_show", methods: ['GET'])]
     // El método que devuelve un ticket en particular por convención REST es show().
-    // El parámetro $id identifica la ruta del ticket particular
-    public function show(string $id) {
+    // El parámetro $code identifica la ruta del ticket particular
+    public function show(string $code, Request $request): Response {
 
-        /* La función array_find busca el $ticket en el arreglo TICKETS */
-        $ticket = array_find(
-            self::TICKETS,
-            fn (array $ticket): bool => $ticket['id'] === $id
-        );
+        /* La función array_find (PHP 8.4+) busca el $ticket en el arreglo TICKETS */
+        $ticket = $this->ticketCatalog->findByCode($code);
 
         if ($ticket === null) {
+            /* Usamos logger para conservar en el log información
+            sobre este error */
+            $this->logger->warning("Se solicitó una incidencia inexistente.", [
+                'ticket_code' => $code,
+                'route' => 'app_ticket_show'
+            ]);
+
+            /* Lanzamos el error, no lo manejamos aquí, dejamos
+            que Simfony lo capture y lo transforme en una página 404 */
             throw $this->createNotFoundException(
-                "No existe la incidencia " . $id
+                "No existe la incidencia " . $code
             );
         }
         /* Si llego a está linea es porque no se lanzó el error, por lo
         tanto, el $ticket no es NULL */
 
+        /**
+         * Guardamos en la sesión la información del último ticket visitado.
+         * Esto luego lo podemos mostrar en otra página, por ejemplo, en el listado
+         * de los tickets
+         */
+        $request->getSession()->set('last_ticket_code', $ticket->getCode());
+
         /* Envío a la plantilla correspondiente los datos
         del ticket encontrado: $ticket */
         return $this->render('ticket/show.html.twig', [
-            'ticket' => $ticket
+            'ticket' => $ticket,
+            'responseTargetHours' => $this->ticketSlaCalculator->getResponseTargetHours($ticket)
         ]);
     }
 }
